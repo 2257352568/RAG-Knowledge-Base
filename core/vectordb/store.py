@@ -1,7 +1,7 @@
 import chromadb
 from chromadb.config import Settings
-from parsing.models import Chunk
-from vectordb.embeddings import BaseEmbedder
+from core.parsing.models import Chunk
+from core.vectordb.embeddings import BaseEmbedder
 
 
 class VectorStore:

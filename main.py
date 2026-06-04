@@ -14,12 +14,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import Config
-from parsing.pipeline import process_file
-from vectordb import VectorStore, LocalEmbedder, DummyEmbedder, QueryCache
-from vectordb.embeddings import BaseEmbedder
-from retrieval import BM25Index, HybridRetriever
-from llm import RAGEngine
+from core.config import Config
+from core.parsing.pipeline import process_file
+from core.vectordb import VectorStore, LocalEmbedder, DummyEmbedder, QueryCache
+from core.vectordb.embeddings import BaseEmbedder
+from core.retrieval import BM25Index, HybridRetriever
+from core.llm import RAGEngine
 
 # Color helpers for terminal output
 _CYAN = "\033[36m"
@@ -196,7 +196,7 @@ def cmd_chat(cfg: Config):
             print("Goodbye.")
             break
         elif question == "/sources":
-            sources = engine._retriever._vs.list_sources()
+            sources = engine.list_sources()
             if sources:
                 print(f"\n{_CYAN}Indexed documents ({len(sources)}):{_RESET}")
                 for s in sources:
@@ -206,7 +206,7 @@ def cmd_chat(cfg: Config):
             print()
             continue
         elif question == "/clear":
-            engine._cache.clear()
+            engine.clear_cache()
             print(f"{_GREEN}Cache cleared.{_RESET}\n")
             continue
 

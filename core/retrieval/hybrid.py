@@ -1,5 +1,5 @@
-from vectordb.store import VectorStore
-from retrieval.bm25 import BM25Index
+from core.vectordb.store import VectorStore
+from core.retrieval.bm25 import BM25Index
 
 
 class HybridRetriever:

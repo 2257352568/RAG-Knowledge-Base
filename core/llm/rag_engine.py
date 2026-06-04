@@ -3,7 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 
-from vectordb.cache import QueryCache
+from core.vectordb.cache import QueryCache
 
 
 RAG_SYSTEM_PROMPT = """\
@@ -68,89 +68,76 @@ class RAGEngine:
             temperature=0.7,
         )
 
-    def query(
-        self,
-        question: str,
-        top_k: int = 5,
-        temperature: float = 0.7,
-        max_tokens: int = 2048,
-        use_mmr: bool = False,
-    ) -> dict:
-        """Full RAG pipeline: rewrite → retrieve → rerank → reorganize → generate."""
-        # Check cache
+    def query(self, question: str, top_k: int = 5, **kwargs) -> dict:
+        """Full RAG pipeline: cache → retrieve → generate → cache."""
         if self._cache:
             cached = self._cache.get(question)
             if cached:
                 cached["cached"] = True
                 return cached
 
-        # Step 1: Query Rewrite
-        queries = [question]
-        if self._enable_rewrite:
-            rewritten = self._rewrite_query(question)
-            queries = [question] + rewritten
+        context, chunks = self._retrieve(question, top_k)
+        answer = self._generate(question, context, **kwargs)
 
-        # Step 2: Multi-query retrieval + merge
-        all_chunks = self._multi_query_retrieve(queries, top_k, use_mmr)
-
-        # Step 3: Rerank
-        if self._reranker and all_chunks:
-            all_chunks = self._reranker.rerank(question, all_chunks, top_k=top_k)
-
-        # Limit
-        all_chunks = all_chunks[:top_k]
-
-        # Step 4: Context reorganization
-        context = self._reorganize_context(all_chunks)
-
-        # Step 5: Generate via LangChain LCEL pipeline
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", RAG_SYSTEM_PROMPT + "\n\n参考资料：\n\n{context}"),
-            ("user", "{question}"),
-        ])
-
-        llm = self._make_llm()
-        llm.temperature = temperature
-        llm.max_tokens = max_tokens
-
-        chain = prompt | llm | StrOutputParser()
-        answer = chain.invoke({"context": context, "question": question})
-
-        result = {
-            "answer": answer,
-            "sources": all_chunks,
-            "cached": False,
-        }
-
+        result = {"answer": answer, "sources": chunks, "cached": False}
         if self._cache:
             self._cache.set(question, result)
-
         return result
 
     def query_stream(self, question: str, top_k: int = 5, **kwargs):
         """Streaming RAG query."""
+        context, _chunks = self._retrieve(question, top_k)
+        for token in self._generate_stream(question, context, **kwargs):
+            yield token
+
+    def list_sources(self) -> list[str]:
+        """List all indexed document paths."""
+        return self._retriever._vs.list_sources()
+
+    def clear_cache(self) -> None:
+        """Clear the query cache."""
+        if self._cache:
+            self._cache.clear()
+
+    # ---- internal pipeline steps ----
+
+    def _retrieve(self, question: str, top_k: int) -> tuple[str, list[dict]]:
+        """Steps 1-4: rewrite → retrieve → rerank → reorganize."""
         queries = [question]
         if self._enable_rewrite:
             queries += self._rewrite_query(question)
 
         all_chunks = self._multi_query_retrieve(queries, top_k)
+
         if self._reranker and all_chunks:
             all_chunks = self._reranker.rerank(question, all_chunks, top_k=top_k)
+
         all_chunks = all_chunks[:top_k]
-
         context = self._reorganize_context(all_chunks)
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", RAG_SYSTEM_PROMPT + "\n\n参考资料：\n\n{context}"),
-            ("user", "{question}"),
-        ])
+        return context, all_chunks
 
+    def _generate(self, question: str, context: str, **kwargs) -> str:
+        """Step 5: LangChain LCEL → answer string."""
         llm = self._make_llm()
         llm.temperature = kwargs.get("temperature", 0.7)
         llm.max_tokens = kwargs.get("max_tokens", 2048)
+        chain = self._make_chain(context, question) | llm | StrOutputParser()
+        return chain.invoke({"context": context, "question": question})
 
-        chain = prompt | llm | StrOutputParser()
-        for chunk in chain.stream({"context": context, "question": question}):
-            yield chunk
+    def _generate_stream(self, question: str, context: str, **kwargs):
+        """Step 5 (streaming): LangChain LCEL → token iterator."""
+        llm = self._make_llm()
+        llm.temperature = kwargs.get("temperature", 0.7)
+        llm.max_tokens = kwargs.get("max_tokens", 2048)
+        chain = self._make_chain(context, question) | llm | StrOutputParser()
+        for token in chain.stream({"context": context, "question": question}):
+            yield token
+
+    def _make_chain(self, context: str, question: str):
+        return ChatPromptTemplate.from_messages([
+            ("system", RAG_SYSTEM_PROMPT + "\n\n参考资料：\n\n{context}"),
+            ("user", "{question}"),
+        ])
 
     def _rewrite_query(self, question: str) -> list[str]:
         """LLM rewrites query for better retrieval recall."""

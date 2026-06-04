@@ -2,7 +2,7 @@ import os
 from collections.abc import Iterator
 
 from openai import OpenAI
-from llm.base import BaseLLM
+from core.llm.base import BaseLLM
 
 
 class DeepSeekLLM(BaseLLM):

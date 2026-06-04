@@ -3,4 +3,6 @@ __pycache__/
 *.pyc
 .env
 chroma_db/
+data/
+面试知识点.md
 .DS_Store

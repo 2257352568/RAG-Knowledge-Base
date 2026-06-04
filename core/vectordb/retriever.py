@@ -1,6 +1,6 @@
 import numpy as np
-from vectordb.store import VectorStore
-from vectordb.embeddings import BaseEmbedder
+from core.vectordb.store import VectorStore
+from core.vectordb.embeddings import BaseEmbedder
 
 
 class Retriever:

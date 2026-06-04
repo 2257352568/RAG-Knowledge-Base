@@ -1,4 +1,4 @@
-from parsing.models import Chunk, ChunkMetadata, Document
+from core.parsing.models import Chunk, ChunkMetadata, Document
 
 SEPARATORS = ["\n\n", "\n", ". ", "。", " "]
 

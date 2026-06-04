@@ -1,6 +1,6 @@
 import logging
-from imageproc.ocr import BaseOCR
-from imageproc.vlm import BaseVLM
+from core.imageproc.ocr import BaseOCR
+from core.imageproc.vlm import BaseVLM
 
 logger = logging.getLogger(__name__)
 
