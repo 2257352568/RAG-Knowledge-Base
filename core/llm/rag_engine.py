@@ -7,16 +7,18 @@ from core.vectordb.cache import QueryCache
 
 
 RAG_SYSTEM_PROMPT = """\
-You are a knowledge base assistant helping users find information from their personal knowledge base.
+你是知识库助手，帮助用户从个人知识库中查找信息。
 
-Rules:
-1. Only answer based on the "参考资料" (reference materials) below — do not fabricate.
-2. If the reference materials lack relevant information, clearly say so.
-3. Cite specific sources (file name, section title) in your answers.
-4. If references contain conflicting information, point it out and analyze.
-5. Default language: reply in 中文 (Chinese).
-   - Only reply in English when the user's question is written entirely in English.
-   - If the question is mixed Chinese and English, reply in Chinese."""
+回答规则：
+1. 只能根据下方"参考资料"回答，不要编造。
+2. 参考资料中没有相关信息时，明确告知用户。
+3. 回答中每一条来自参考资料的信息，必须用格式标注来源：
+   【来源: 文件名, 章节路径】
+   例如: 【来源: 粒球模糊概念认知学习.pdf, 第1章 § 引言】
+   例如: 【来源: 面试知识点.md, 二、分块策略 § 2.3 chunk_size】
+   如果同一段落的多个事实来自同一来源，在段落末尾统一标注一次即可。
+4. 如果多条参考资料包含矛盾信息，请指出并分析。
+5. 默认使用中文回答。"""
 
 QUERY_REWRITE_PROMPT = """\
 你是一个查询改写助手。将用户的原始问题改写成 2-3 个更适合检索的查询。
@@ -51,6 +53,8 @@ class RAGEngine:
         reranker=None,   # CrossEncoderReranker | DummyReranker
         cache: QueryCache | None = None,
         enable_rewrite: bool = True,
+        enable_rerank: bool = True,
+        enable_stream: bool = True,
     ):
         self._retriever = retriever
         self._api_key = api_key or os.getenv("DEEPSEEK_API_KEY", "")
@@ -59,6 +63,8 @@ class RAGEngine:
         self._reranker = reranker
         self._cache = cache
         self._enable_rewrite = enable_rewrite
+        self._enable_rerank = enable_rerank
+        self._enable_stream = enable_stream
 
     def _make_llm(self):
         return ChatOpenAI(
@@ -109,7 +115,7 @@ class RAGEngine:
 
         all_chunks = self._multi_query_retrieve(queries, top_k)
 
-        if self._reranker and all_chunks:
+        if self._enable_rerank and self._reranker and all_chunks:
             all_chunks = self._reranker.rerank(question, all_chunks, top_k=top_k)
 
         all_chunks = all_chunks[:top_k]
@@ -140,20 +146,28 @@ class RAGEngine:
         ])
 
     def _rewrite_query(self, question: str) -> list[str]:
-        """LLM rewrites query for better retrieval recall."""
-        llm = self._make_llm()
-        llm.temperature = 0.3
-        llm.max_tokens = 256
+        """LLM rewrites query for better retrieval recall.
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("user", QUERY_REWRITE_PROMPT),
-        ])
-        chain = prompt | llm | StrOutputParser()
-        raw = chain.invoke({"question": question})
+        Fails gracefully: if the LLM is unavailable (no API key,
+        network error, etc.), returns an empty list so retrieval
+        still works with the original query.
+        """
+        try:
+            llm = self._make_llm()
+            llm.temperature = 0.3
+            llm.max_tokens = 256
 
-        lines = [line.strip() for line in raw.strip().split("\n") if line.strip()]
-        rewritten = [l for l in lines if l != question]
-        return rewritten[:2]
+            prompt = ChatPromptTemplate.from_messages([
+                ("user", QUERY_REWRITE_PROMPT),
+            ])
+            chain = prompt | llm | StrOutputParser()
+            raw = chain.invoke({"question": question})
+
+            lines = [line.strip() for line in raw.strip().split("\n") if line.strip()]
+            rewritten = [l for l in lines if l != question]
+            return rewritten[:2]
+        except Exception:
+            return []
 
     def _multi_query_retrieve(
         self, queries: list[str], top_k: int, use_mmr: bool = False
@@ -174,19 +188,22 @@ class RAGEngine:
         return merged
 
     def _reorganize_context(self, chunks: list[dict]) -> str:
-        """Reorganize retrieved chunks into structured context."""
+        """Reorganize retrieved chunks into structured context with clear citation labels."""
+        import os as _os
         parts = []
         for i, chunk in enumerate(chunks, 1):
             meta = chunk.get("metadata", {})
-            source = meta.get("source_path", "未知来源")
+            full_path = meta.get("source_path", "未知来源")
+            # Use basename for cleaner citation display
+            filename = _os.path.basename(full_path) if full_path != "未知来源" else full_path
             section = meta.get("section_title", "")
             page = meta.get("page_start", "")
 
-            header = f"[{i}] 来源: {source}"
+            header = f"[{i}] 文件: {filename}"
             if section:
                 header += f" | 章节: {section}"
             if page:
-                header += f" | 页码: {page}"
+                header += f" | 页码: 第{page}页"
 
             parts.append(f"{header}\n{chunk['text']}")
 

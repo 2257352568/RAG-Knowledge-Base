@@ -6,3 +6,11 @@ chroma_db/
 data/
 面试知识点.md
 .DS_Store
+node_modules/
+dist/
+frontend/dist/
+frontend/node_modules/
+package-lock.json
+frontend/package-lock.json
+*.tsbuildinfo
+frontend/*.tsbuildinfo

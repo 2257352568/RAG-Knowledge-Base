@@ -20,6 +20,8 @@ def tokens_to_document(token_list: list[dict], source_path: str = "",
     title = ""
     sections: list[dict] = []
     current_section: dict | None = None
+    # Track heading hierarchy: level -> heading_text
+    heading_stack: dict[int, str] = {}
 
     for token in token_list:
         ttype = token["type"]
@@ -39,13 +41,26 @@ def tokens_to_document(token_list: list[dict], source_path: str = "",
         if ttype == "heading":
             level = token["attrs"]["level"]
             heading_text = _extract_text(token)
+
+            # Update heading stack: this heading, plus remove deeper levels
+            heading_stack[level] = heading_text
+            for lv in list(heading_stack.keys()):
+                if lv > level:
+                    del heading_stack[lv]
+
             if level == 1 and not title:
                 title = heading_text
+
+            # Build hierarchical section title: "H1 > H2 > H3"
+            hierarchical_title = " § ".join(
+                heading_stack[lv] for lv in sorted(heading_stack) if heading_stack[lv]
+            )
+
             if current_section:
                 current_section["text"] = current_section["text"].strip()
                 if current_section["text"]:
                     sections.append(current_section)
-            current_section = {"title": heading_text, "text": heading_text + "\n", "page": None}
+            current_section = {"title": hierarchical_title, "text": heading_text + "\n", "page": None}
             continue
 
         if ttype in ("paragraph", "list", "block_quote", "block_html"):

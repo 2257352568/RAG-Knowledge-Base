@@ -12,6 +12,7 @@ class Config:
         # Paths
         self.docs_dir = overrides.get("docs_dir", os.getenv("KB_DOCS_DIR", "./docs"))
         self.db_dir = overrides.get("db_dir", os.getenv("KB_DB_DIR", "./chroma_db"))
+        self.md_output_dir = overrides.get("md_output_dir", os.getenv("KB_MD_DIR", "./data/markdown"))
         self.collection_name = overrides.get("collection_name", os.getenv("KB_COLLECTION", "knowledge_base"))
 
         # HuggingFace
@@ -32,15 +33,15 @@ class Config:
         # Retrieval
         self.top_k = int(overrides.get("top_k", os.getenv("KB_TOP_K", "5")))
 
-        # Reranker
-        self.rerank_model = overrides.get("rerank_model", os.getenv("KB_RERANK_MODEL", ""))
-        self.enable_rerank = bool(self.rerank_model)
+        # Reranker (default ON, set KB_RERANK_ENABLED=0 to disable)
+        self.rerank_model = overrides.get("rerank_model", os.getenv("KB_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"))
+        self.enable_rerank = overrides.get("enable_rerank", os.getenv("KB_RERANK_ENABLED", "1") != "0")
+
+        # Streaming (default ON)
+        self.enable_stream = overrides.get("enable_stream", True)
 
         # Query rewrite
         self.enable_rewrite = overrides.get("enable_rewrite", True)
-
-        # OCR
-        self.enable_ocr = overrides.get("enable_ocr", False)
 
         # Cache
         self.cache_size = int(overrides.get("cache_size", os.getenv("KB_CACHE_SIZE", "256")))

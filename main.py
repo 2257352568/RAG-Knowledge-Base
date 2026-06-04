@@ -97,14 +97,25 @@ def _build_rag_engine(cfg: Config):
     hybrid = HybridRetriever(store, bm25)
     cache = QueryCache(max_size=cfg.cache_size, ttl=cfg.cache_ttl)
 
+    # Create reranker if enabled
+    reranker = None
+    if cfg.enable_rerank and cfg.rerank_model:
+        from core.retrieval.reranker import CrossEncoderReranker
+        try:
+            reranker = CrossEncoderReranker(model_name=cfg.rerank_model)
+            print(f"{_GREEN}  -> Reranker: {cfg.rerank_model}{_RESET}")
+        except Exception as e:
+            print(f"{_YELLOW}  -> Reranker unavailable ({e}), proceeding without{_RESET}")
+
     engine = RAGEngine(
         retriever=hybrid,
         api_key=cfg.llm_api_key,
         model=cfg.llm_model,
         base_url=cfg.llm_base_url,
-        reranker=None,
+        reranker=reranker,
         cache=cache,
         enable_rewrite=cfg.enable_rewrite,
+        enable_rerank=cfg.enable_rerank,
     )
     return engine
 
@@ -141,6 +152,9 @@ def cmd_ingest(cfg: Config, path: str):
         embedder=embedder,
     )
 
+    # Ensure markdown output directory exists
+    os.makedirs(cfg.md_output_dir, exist_ok=True)
+
     total_chunks = 0
     for fpath in files:
         print(f"\n{_BOLD}Ingesting: {fpath}{_RESET}")
@@ -149,6 +163,7 @@ def cmd_ingest(cfg: Config, path: str):
                 fpath,
                 chunk_size=cfg.chunk_size,
                 chunk_overlap=cfg.chunk_overlap,
+                md_output_dir=cfg.md_output_dir,
             )
             # Dedup: remove existing chunks for this source
             removed = store.delete_by_source(doc.source_path)
