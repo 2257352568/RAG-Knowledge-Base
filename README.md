@@ -69,4 +69,4 @@ PUT    /api/settings          热更新配置
 
 ## 技术栈
 
-Python、FastAPI、React、TypeScript、OpenDataLoader PDF、ChromaDB、LangChain、DeepSeek、sentence-transformers、BM25 (jieba)、Pydantic、Docker
+Python、FastAPI、React、TypeScript、OpenDataLoader PDF、ChromaDB、LangChain、BM25 (jieba)、Docker
